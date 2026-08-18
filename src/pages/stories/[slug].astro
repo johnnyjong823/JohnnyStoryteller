@@ -155,7 +155,11 @@ const q2 = d.quiz[1];
 
   .slide {
     display: none;
-    height: 100%;
+    /* 絕對定位填滿 .slides，而不是 height:100%。
+       height:100% 在 grid 項目底下解析不出確定高度，列高會算錯，
+       結果是文字面板被壓扁、說書人提示整段被切掉。 */
+    position: absolute;
+    inset: 0;
     animation: fade 0.18s ease;
   }
 
@@ -202,7 +206,11 @@ const q2 = d.quiz[1];
 
   .panel {
     padding: 14px calc(var(--safe-r) + 18px) 12px calc(var(--safe-l) + 18px);
-    max-height: 45%;
+    /* ⚠ 必須用 dvh，不能用 %。
+       百分比 max-height 是相對「自己的 grid 區域」解析的，
+       45% 會變成「自己高度的 45%」—— 面板把自己壓扁成 57px，
+       說書人提示整段被切掉。dvh 相對視窗，沒有循環定義問題。 */
+    max-height: 45dvh;
     overflow-y: auto;
     touch-action: pan-y;
     background: var(--bg);
@@ -232,8 +240,8 @@ const q2 = d.quiz[1];
   /* ── 橫向（平板主要姿勢）：圖片滿版，文字疊在下緣 ── */
   @media (orientation: landscape) {
     .slide.is-active {
+      /* 仍然是 position:absolute; inset:0（繼承自 .slide） */
       display: block;
-      position: relative;
     }
 
     .stage {

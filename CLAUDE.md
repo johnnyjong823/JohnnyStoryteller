@@ -93,6 +93,11 @@ assetUrl(storySlug, file)   // ✅
 - **中文長句沒有斷點會撐爆 grid**。`grid-template-columns` 要用 `minmax(0, 1fr)`，
   文字元素要 `overflow-wrap: anywhere`，否則欄位被撐成 `max-content`，
   題目和按鈕會被切掉右半邊。
+- **grid 項目上的百分比 `max-height` 是循環定義**。`.panel{max-height:45%}` 解析成
+  「自己 grid 區域的 45%」= 自己高度的 45%，面板把自己壓扁成 57px（內容需要 127px），
+  說書人提示整段看不到。要用 **`dvh`** 這類相對視窗的單位。
+  這兩個 bug 都是我改版型時引入、靠實際量測 `getBoundingClientRect()` 才抓到的 ——
+  **改完版型一定要量，不能只看截圖**（截圖上「文字少一行」很容易被當成正常）。
 - **UI 改動要真的看畫面**，這個專案的 bug 幾乎都是視覺性的。零安裝的做法：
   ```bash
   # 直接截圖
