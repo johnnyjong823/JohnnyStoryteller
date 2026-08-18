@@ -7,7 +7,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 **階段 1（骨架與部署管線）完成，階段 2 的內容管線完成。可以放故事了。**
 
 已經可以跑：`npm run dev`、`npm run build`（含 schema 驗證）、`import-story`、`placeholders`、`prepare-images`。
-GitHub Actions workflow 已就緒，但**尚未建立 GitHub repo、尚未 push**。
+**已上線**：<https://johnnyjong823.github.io/JohnnyStoryteller/>（repo `johnnyjong823/JohnnyStoryteller`，公開）。
+GitHub Actions 自動部署已驗證可用。本地測試點兩下 `start.bat`。
 
 repo 名稱定為 **`JohnnyStoryteller`**，所以 `base` 是 `/JohnnyStoryteller`。
 
@@ -98,6 +99,8 @@ assetUrl(storySlug, file)   // ✅
 | `npm run import-story -- <json>` | Manus 的 JSON → `index.md` + `prompts.md` |
 | `npm run placeholders -- <slug>` | 產佔位圖，故事沒美術也能先跑完整流程 |
 | `npm run prepare-images -- <slug>` | 整理 master（1600px WebP q80）+ 產響應式變體 |
+| `npm run manus-prompt -- "構想"` | 產生要貼給 Manus 的提示詞（白名單自動注入） |
+| `start.bat` | 本地測試，含手機可連的區網網址 |
 
 ⚠ npm script 傳參數要用 `--` 分隔：`npm run prepare-images -- my-slug`。
 
