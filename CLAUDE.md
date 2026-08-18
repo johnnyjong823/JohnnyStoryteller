@@ -84,6 +84,24 @@ assetUrl(storySlug, file)   // ✅
 
 ## 其他容易踩的雷
 
+- **`global.css` 的 `[hidden]{display:none!important}` 不能刪。**
+  `hidden` 屬性靠的是瀏覽器預設樣式，但任何作者樣式（`.quiz{display:grid}`）
+  特異性都比它高會蓋掉它。`.quiz` 是 `position:absolute;inset:0;z-index:30`，
+  一旦沒藏起來就會蓋住整個播放器 —— **點進故事只看得到問答，圖片和文字全不見**。
+  這個 bug 真的發生過（2026-08-18）。新增任何「用 `hidden` 控制顯示」的元素時，
+  不要另外給它 `display`。
+- **中文長句沒有斷點會撐爆 grid**。`grid-template-columns` 要用 `minmax(0, 1fr)`，
+  文字元素要 `overflow-wrap: anywhere`，否則欄位被撐成 `max-content`，
+  題目和按鈕會被切掉右半邊。
+- **UI 改動要真的看畫面**，這個專案的 bug 幾乎都是視覺性的。零安裝的做法：
+  ```bash
+  # 直接截圖
+  "/c/Program Files (x86)/Microsoft/Edge/Application/msedge.exe" \
+    --headless=new --disable-gpu --window-size=390,844 \
+    --screenshot=out.png --virtual-time-budget=4000 <url>
+  # 需要互動（點擊、翻頁）時加 --remote-debugging-port=9222，
+  # 再用 Node 內建的 WebSocket 走 CDP 驅動
+  ```
 - **中文搜尋不能用 Fuse.js / Lunr 的預設設定** — 它們用空白斷詞，中文沒有空白，搜「小紅」會找不到「小紅帽」。要用正規化 + 子字串比對。→ `docs/02`
 - **`public/.nojekyll` 要存在** — Astro 輸出 `_astro/`，Jekyll 會忽略底線開頭的目錄。
 - **圖片轉檔快取要納入 Actions cache** — 300 篇 × 13 張 × 4 變體 = 15,600 次 sharp 轉檔，沒快取每次 push 要 20–40 分鐘。

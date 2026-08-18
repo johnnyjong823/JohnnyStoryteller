@@ -161,7 +161,10 @@ const q2 = d.quiz[1];
 
   .slide.is-active {
     display: grid;
-    grid-template-rows: 58% minmax(0, 1fr);
+    /* 圖片吃掉所有剩餘空間，文字面板只佔它需要的高度。
+       固定成 58% 會在文字短的時候浪費一大塊，而「圖片要大」是這個
+       產品的第一原則（docs/01）。文字太長時 .panel 的 max-height 會接手。 */
+    grid-template-rows: minmax(0, 1fr) auto;
   }
 
   @keyframes fade {
@@ -198,7 +201,8 @@ const q2 = d.quiz[1];
   }
 
   .panel {
-    padding: 14px calc(var(--safe-r) + 18px) 10px calc(var(--safe-l) + 18px);
+    padding: 14px calc(var(--safe-r) + 18px) 12px calc(var(--safe-l) + 18px);
+    max-height: 45%;
     overflow-y: auto;
     touch-action: pan-y;
     background: var(--bg);
@@ -312,7 +316,11 @@ const q2 = d.quiz[1];
     z-index: 30;
     background: var(--bg);
     display: grid;
-    place-items: center;
+    /* minmax(0, 1fr) 是必要的：中文沒有空格，欄位會被撐成 max-content
+       而超出畫面寬度，題目和選項按鈕就會被切掉右半邊 */
+    grid-template-columns: minmax(0, 1fr);
+    align-content: center;
+    justify-items: center;
     padding: calc(var(--safe-t) + 24px) calc(var(--safe-r) + 20px) calc(var(--safe-b) + 24px)
       calc(var(--safe-l) + 20px);
     overflow-y: auto;
@@ -323,6 +331,12 @@ const q2 = d.quiz[1];
     width: 100%;
     max-width: 520px;
     text-align: center;
+  }
+
+  .quiz-q,
+  .quiz-option {
+    /* 中文長句沒有斷點，強制它換行而不是撐寬容器 */
+    overflow-wrap: anywhere;
   }
 
   .quiz-step.is-active {
