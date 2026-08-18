@@ -1,0 +1,73 @@
+name: Deploy to GitHub Pages
+
+# 走自訂 Actions workflow，可免除 GitHub Pages「每小時 10 次建置」的軟限制。
+# 見 docs/06-風險評估.md
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm ci
+
+      # 圖片變體快取：只有新增或修改過的 master 會重轉。
+      # 300 篇 × 13 張 × 4 變體 = 15,600 次 sharp 轉檔，沒有這層快取
+      # 每次 push 都要 20–40 分鐘（docs/06 風險 6）。
+      - name: Cache image variants
+        uses: actions/cache@v4
+        with:
+          path: public/stories
+          key: images-${{ hashFiles('src/content/stories/*/images/*') }}
+          restore-keys: |
+            images-
+
+      - name: Build
+        run: npm run build
+        env:
+          # 自動帶入，不用寫死帳號
+          SITE: https://${{ github.repository_owner }}.github.io
+          # ⚠ 已決定不綁自訂網域，所以專案頁一定要有 base。
+          # 未來綁了網域就把這行改成 BASE_PATH: /
+          BASE_PATH: /${{ github.event.repository.name }}
+
+      - name: Report site size
+        # GitHub Pages 發布網站上限 1 GB 是硬限制（docs/06 風險 1）
+        run: |
+          SIZE=$(du -sm dist | cut -f1)
+          echo "### 網站大小：${SIZE} MB / 1024 MB" >> $GITHUB_STEP_SUMMARY
+          if [ "$SIZE" -gt 700 ]; then
+            echo "🔴 超過 700 MB 警戒線，該執行 R2 遷移了（docs/06）" >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

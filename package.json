@@ -1,0 +1,24 @@
+{
+  "name": "johnny-storyteller",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node scripts/prepare-images.mjs --all --quiet && astro dev",
+    "build": "node scripts/prepare-images.mjs --all && astro build",
+    "preview": "astro preview",
+    "check": "astro check",
+    "import-story": "node scripts/import-story.mjs",
+    "prepare-images": "node scripts/prepare-images.mjs",
+    "placeholders": "node scripts/make-placeholders.mjs",
+    "manus-prompt": "node scripts/manus-prompt.mjs"
+  },
+  "dependencies": {
+    "astro": "^5",
+    "sharp": "^0.34"
+  },
+  "devDependencies": {
+    "@astrojs/check": "^0.9.10",
+    "typescript": "^5.9.3"
+  }
+}

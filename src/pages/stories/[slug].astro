@@ -1,0 +1,731 @@
+---
+import { getCollection } from 'astro:content';
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import { url, sceneSources } from '../../lib/assetUrl';
+
+export async function getStaticPaths() {
+  const all = await getCollection('stories');
+  return all
+    .filter((s) => import.meta.env.DEV || s.data.status === 'published')
+    .map((story) => ({ params: { slug: story.id }, props: { story } }));
+}
+
+const { story } = Astro.props;
+const d = story.data;
+const q1 = d.quiz[0];
+const q2 = d.quiz[1];
+---
+
+<BaseLayout title={`${d.title} — 說書人強尼`} description={d.summary} bodyClass="is-player">
+  <div
+    class="player"
+    id="player"
+    data-slug={story.id}
+    data-count={d.scenes.length}
+    data-home={url('')}
+    data-answer={q1.type === 'choice' ? q1.answer : -1}
+    data-explain={q1.type === 'choice' ? q1.explain : ''}
+  >
+    <button class="exit" id="exit" aria-label="回故事列表">✕</button>
+    <span class="exit-hint" id="exit-hint" hidden>再按一次離開</span>
+
+    <div class="slides" id="slides">
+      {
+        d.scenes.map((scene, i) => {
+          const src = sceneSources(story.id, scene.image);
+          return (
+            <article class:list={['slide', i === 0 && 'is-active']} data-i={i}>
+              <div class="stage">
+                <picture>
+                  <source type="image/avif" srcset={src.avif} sizes="100vw" />
+                  <img
+                    src={src.webp}
+                    alt={scene.alt}
+                    loading={i < 3 ? 'eager' : 'lazy'}
+                    decoding="async"
+                    draggable="false"
+                  />
+                </picture>
+              </div>
+              <div class="panel">
+                <p class="caption">{scene.caption}</p>
+                {scene.note && <p class="note">{scene.note}</p>}
+              </div>
+            </article>
+          );
+        })
+      }
+    </div>
+
+    <section class="quiz" id="quiz" hidden>
+      <div class="quiz-step is-active" data-step="0">
+        <p class="quiz-label">小問題 1 / 2</p>
+        <h2 class="quiz-q">{q1.type === 'choice' ? q1.question : ''}</h2>
+        <div class="quiz-options" id="quiz-options">
+          {
+            q1.type === 'choice' &&
+              q1.options.map((opt, i) => (
+                <button class="quiz-option" data-i={i}>
+                  {opt}
+                </button>
+              ))
+          }
+        </div>
+        <p class="quiz-feedback" id="quiz-feedback" hidden></p>
+        <button class="quiz-next" id="quiz-next" hidden>下一題</button>
+      </div>
+
+      <div class="quiz-step" data-step="1" hidden>
+        <p class="quiz-label">小問題 2 / 2</p>
+        <h2 class="quiz-q">{q2.type === 'open' ? q2.question : ''}</h2>
+        <p class="quiz-hint-label">這一題沒有標準答案，讓他說說看</p>
+        {q2.type === 'open' && <p class="quiz-hint">💡 {q2.hint}</p>}
+        <button class="quiz-next" id="quiz-done">說完了</button>
+      </div>
+
+      <div class="quiz-step" data-step="2" hidden>
+        <h2 class="quiz-end">故事說完了 🌙</h2>
+        <div class="quiz-end-actions">
+          <button class="quiz-next" id="quiz-again">再看一次</button>
+          <a class="quiz-next is-ghost" href={url('')}>回故事列表</a>
+        </div>
+      </div>
+    </section>
+
+    <div class="resume" id="resume" hidden>
+      <span id="resume-text"></span>
+      <button id="resume-yes">繼續</button>
+      <button id="resume-no" class="is-ghost">從頭開始</button>
+    </div>
+
+    <footer class="bar" id="bar">
+      <div class="dots" id="dots">
+        {d.scenes.map((_, i) => <span class:list={['dot', i === 0 && 'is-on']} />)}
+      </div>
+      <span class="counter" id="counter">1 / {d.scenes.length}</span>
+      <button id="fontsize" aria-label="調整文字大小">Aa</button>
+      <button id="toggletext" aria-label="隱藏／顯示文字">👁</button>
+    </footer>
+  </div>
+</BaseLayout>
+
+<style>
+  .player {
+    height: 100dvh;
+    display: grid;
+    grid-template-rows: minmax(0, 1fr) auto;
+    background: var(--bg-sunken);
+    overflow: hidden;
+    position: relative;
+  }
+
+  /* ── 離開鍵：需要按兩次，防孩子誤觸 ── */
+  .exit {
+    position: absolute;
+    top: calc(var(--safe-t) + 8px);
+    right: calc(var(--safe-r) + 8px);
+    z-index: 20;
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    background: rgba(0, 0, 0, 0.45);
+    color: var(--text);
+    font-size: 17px;
+    line-height: 44px;
+    text-align: center;
+    backdrop-filter: blur(6px);
+  }
+
+  .exit-hint {
+    position: absolute;
+    top: calc(var(--safe-t) + 18px);
+    right: calc(var(--safe-r) + 60px);
+    z-index: 20;
+    font-size: 13px;
+    color: var(--text-dim);
+    background: rgba(0, 0, 0, 0.6);
+    padding: 4px 10px;
+    border-radius: 999px;
+  }
+
+  .slides {
+    position: relative;
+    min-height: 0;
+  }
+
+  .slide {
+    display: none;
+    height: 100%;
+    animation: fade 0.18s ease;
+  }
+
+  .slide.is-active {
+    display: grid;
+    grid-template-rows: 58% minmax(0, 1fr);
+  }
+
+  @keyframes fade {
+    from {
+      opacity: 0.35;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+
+  .stage {
+    min-height: 0;
+    display: grid;
+    place-items: center;
+    overflow: hidden;
+    /* iOS：防長按跳出「儲存影像」、防滑動選到文字、手勢自己管 */
+    -webkit-touch-callout: none;
+    user-select: none;
+    -webkit-user-select: none;
+    touch-action: none;
+  }
+
+  .stage picture,
+  .stage img {
+    width: 100%;
+    height: 100%;
+  }
+
+  /* 直向：裁切到接近 1:1。主角落在中央安全區內，不會被切掉（見 docs/04） */
+  .stage img {
+    object-fit: cover;
+    object-position: center;
+  }
+
+  .panel {
+    padding: 14px calc(var(--safe-r) + 18px) 10px calc(var(--safe-l) + 18px);
+    overflow-y: auto;
+    touch-action: pan-y;
+    background: var(--bg);
+  }
+
+  .caption {
+    margin: 0;
+    font-size: var(--caption-size);
+    line-height: 1.85;
+    /* 換行的地方就是說書人要停頓的地方，必須保留 */
+    white-space: pre-line;
+    color: var(--text);
+  }
+
+  .note {
+    margin: 10px 0 0;
+    font-size: calc(var(--caption-size) - 2px);
+    line-height: 1.7;
+    color: var(--note);
+    white-space: pre-line;
+  }
+
+  .note::before {
+    content: '💡 ';
+  }
+
+  /* ── 橫向（平板主要姿勢）：圖片滿版，文字疊在下緣 ── */
+  @media (orientation: landscape) {
+    .slide.is-active {
+      display: block;
+      position: relative;
+    }
+
+    .stage {
+      height: 100%;
+    }
+
+    /* 橫向用 contain：4:3 的圖剛好，不需要裁切 */
+    .stage img {
+      object-fit: contain;
+    }
+
+    .panel {
+      position: absolute;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      max-height: 42%;
+      background: linear-gradient(to top, rgba(9, 9, 14, 0.94) 65%, rgba(9, 9, 14, 0));
+      padding-top: 34px;
+    }
+  }
+
+  /* 純看圖模式 */
+  .player.text-hidden .panel {
+    display: none;
+  }
+
+  /* ── 底部列 ── */
+  .bar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 8px calc(var(--safe-r) + 14px) calc(var(--safe-b) + 8px) calc(var(--safe-l) + 14px);
+    background: var(--bg);
+    border-top: 1px solid var(--border);
+  }
+
+  .dots {
+    display: flex;
+    gap: 5px;
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+  }
+
+  .dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--border);
+    flex: none;
+  }
+
+  .dot.is-on {
+    background: var(--accent);
+  }
+
+  .counter {
+    font-size: 12px;
+    color: var(--text-dim);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .bar button {
+    min-width: 44px;
+    height: 40px;
+    border-radius: 8px;
+    font-size: 14px;
+    color: var(--text-dim);
+  }
+
+  .bar button:active {
+    background: var(--bg-elevated);
+  }
+
+  /* ── 問答 ── */
+  .quiz {
+    position: absolute;
+    inset: 0;
+    z-index: 30;
+    background: var(--bg);
+    display: grid;
+    place-items: center;
+    padding: calc(var(--safe-t) + 24px) calc(var(--safe-r) + 20px) calc(var(--safe-b) + 24px)
+      calc(var(--safe-l) + 20px);
+    overflow-y: auto;
+  }
+
+  .quiz-step {
+    display: none;
+    width: 100%;
+    max-width: 520px;
+    text-align: center;
+  }
+
+  .quiz-step.is-active {
+    display: block;
+  }
+
+  .quiz-label {
+    font-size: 13px;
+    color: var(--text-dim);
+    margin: 0 0 18px;
+  }
+
+  .quiz-q {
+    font-size: 20px;
+    line-height: 1.6;
+    margin: 0 0 28px;
+    font-weight: 600;
+  }
+
+  .quiz-options {
+    display: grid;
+    gap: 12px;
+  }
+
+  .quiz-option {
+    /* 學齡前的觸控目標：至少 64px 高（docs/05） */
+    min-height: 64px;
+    border-radius: var(--radius);
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    font-size: 17px;
+    padding: 12px 16px;
+    transition: transform 0.12s ease;
+  }
+
+  .quiz-option:active {
+    transform: scale(0.98);
+  }
+
+  /* 答對：不只用顏色，一定要有符號（色覺障礙） */
+  .quiz-option.is-correct {
+    border-color: var(--correct);
+    color: var(--correct);
+    animation: pop 0.22s ease;
+  }
+
+  .quiz-option.is-correct::after {
+    content: ' ✓';
+    font-weight: 700;
+  }
+
+  /* 答錯：灰化，不用紅色 —— 紅色對孩子太有攻擊性 */
+  .quiz-option.is-wrong {
+    opacity: 0.32;
+  }
+
+  @keyframes pop {
+    0% {
+      transform: scale(1);
+    }
+    50% {
+      transform: scale(1.05);
+    }
+    100% {
+      transform: scale(1);
+    }
+  }
+
+  .quiz-feedback {
+    margin: 20px 0 0;
+    font-size: 15px;
+    line-height: 1.8;
+    color: var(--text-dim);
+  }
+
+  .quiz-feedback.is-good {
+    color: var(--correct);
+  }
+
+  .quiz-hint-label {
+    font-size: 13px;
+    color: var(--text-dim);
+    margin: -14px 0 22px;
+  }
+
+  .quiz-hint {
+    font-size: 14px;
+    line-height: 1.8;
+    color: var(--note);
+    background: var(--bg-elevated);
+    border-radius: var(--radius);
+    padding: 14px 16px;
+    text-align: left;
+    margin: 0 0 28px;
+  }
+
+  .quiz-next {
+    display: inline-block;
+    margin-top: 26px;
+    min-height: 52px;
+    padding: 12px 32px;
+    border-radius: var(--radius);
+    background: var(--accent);
+    color: #0d0d14;
+    font-size: 16px;
+    font-weight: 600;
+  }
+
+  .quiz-next.is-ghost {
+    background: none;
+    border: 1px solid var(--border);
+    color: var(--text-dim);
+    line-height: 28px;
+  }
+
+  .quiz-end {
+    font-size: 24px;
+    margin: 0;
+  }
+
+  .quiz-end-actions {
+    display: flex;
+    gap: 12px;
+    justify-content: center;
+    flex-wrap: wrap;
+  }
+
+  /* ── 續看提示 ── */
+  .resume {
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    bottom: calc(var(--safe-b) + 66px);
+    z-index: 25;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 8px 10px 8px 16px;
+    font-size: 13px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+    max-width: calc(100vw - 32px);
+  }
+
+  .resume button {
+    min-height: 36px;
+    padding: 0 14px;
+    border-radius: 999px;
+    background: var(--accent);
+    color: #0d0d14;
+    font-size: 13px;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+
+  .resume button.is-ghost {
+    background: none;
+    color: var(--text-dim);
+    padding: 0 6px;
+  }
+</style>
+
+<script>
+  const player = document.getElementById('player') as HTMLElement;
+  const slug = player.dataset.slug!;
+  const slides = Array.from(player.querySelectorAll<HTMLElement>('.slide'));
+  const dots = Array.from(player.querySelectorAll<HTMLElement>('.dot'));
+  const counter = document.getElementById('counter')!;
+  const quiz = document.getElementById('quiz') as HTMLElement;
+  const bar = document.getElementById('bar')!;
+  const count = slides.length;
+
+  const KEY_PROGRESS = `js:progress:${slug}`;
+  const KEY_FONT = 'js:fontsize';
+  const KEY_SEEN = 'js:seen';
+
+  let idx = 0;
+  let inQuiz = false;
+
+  // ── 翻頁 ────────────────────────────────────────────────
+  function preload(i: number) {
+    for (const j of [i + 1, i + 2, i - 1]) {
+      const img = slides[j]?.querySelector('img');
+      if (img && img.loading === 'lazy') img.loading = 'eager';
+    }
+  }
+
+  function show(i: number, pushHash = true) {
+    if (i < 0) return;
+    if (i >= count) return openQuiz();
+
+    idx = i;
+    slides.forEach((s, k) => s.classList.toggle('is-active', k === i));
+    dots.forEach((d, k) => d.classList.toggle('is-on', k === i));
+    counter.textContent = `${i + 1} / ${count}`;
+    preload(i);
+
+    if (pushHash) history.replaceState(null, '', `#${i + 1}`);
+    try {
+      localStorage.setItem(KEY_PROGRESS, String(i));
+    } catch {}
+  }
+
+  const next = () => (inQuiz ? null : show(idx + 1));
+  const prev = () => (inQuiz ? null : show(idx - 1));
+
+  // ── 手勢：滑動翻頁 + 點擊左右半邊 ──────────────────────
+  const SWIPE = 45; // px，超過就算滑動
+  const TAP = 12; // px，小於就算點擊
+  const EDGE = 20; // px，避開 iOS Safari 的邊緣「上一頁」手勢
+  let sx = 0,
+    sy = 0,
+    tracking = false;
+
+  const slidesEl = document.getElementById('slides')!;
+
+  slidesEl.addEventListener(
+    'touchstart',
+    (e) => {
+      const t = e.changedTouches[0];
+      if (t.clientX < EDGE || t.clientX > innerWidth - EDGE) {
+        tracking = false;
+        return;
+      }
+      sx = t.clientX;
+      sy = t.clientY;
+      tracking = true;
+    },
+    { passive: true },
+  );
+
+  slidesEl.addEventListener(
+    'touchend',
+    (e) => {
+      if (!tracking) return;
+      tracking = false;
+      const t = e.changedTouches[0];
+      const dx = t.clientX - sx;
+      const dy = t.clientY - sy;
+
+      if (Math.abs(dx) > SWIPE && Math.abs(dx) > Math.abs(dy)) {
+        dx < 0 ? next() : prev();
+      } else if (Math.abs(dx) < TAP && Math.abs(dy) < TAP) {
+        // 點擊：右半邊下一頁、左半邊上一頁
+        t.clientX > innerWidth / 2 ? next() : prev();
+      }
+    },
+    { passive: true },
+  );
+
+  // 滑鼠／觸控板（本機開發用）。觸控裝置上 touchend 之後會補送 click，要擋掉避免翻兩頁
+  let touchedAt = 0;
+  slidesEl.addEventListener('touchend', () => (touchedAt = Date.now()), { passive: true });
+  slidesEl.addEventListener('click', (e) => {
+    if (Date.now() - touchedAt < 600) return;
+    (e as MouseEvent).clientX > innerWidth / 2 ? next() : prev();
+  });
+
+  // 鍵盤：次要支援
+  addEventListener('keydown', (e) => {
+    if (e.key === 'ArrowRight' || e.key === ' ' || e.key === 'PageDown') {
+      e.preventDefault();
+      next();
+    } else if (e.key === 'ArrowLeft' || e.key === 'PageUp') {
+      e.preventDefault();
+      prev();
+    }
+  });
+
+  // ── 字級三段 ────────────────────────────────────────────
+  const SIZES = [13, 15, 18];
+  let fontStep = 1;
+  function applyFont() {
+    document.documentElement.style.setProperty('--caption-size', `${SIZES[fontStep]}px`);
+  }
+  try {
+    const saved = Number(localStorage.getItem(KEY_FONT));
+    if (saved >= 0 && saved < SIZES.length) fontStep = saved;
+  } catch {}
+  applyFont();
+
+  document.getElementById('fontsize')!.addEventListener('click', () => {
+    fontStep = (fontStep + 1) % SIZES.length;
+    applyFont();
+    try {
+      localStorage.setItem(KEY_FONT, String(fontStep));
+    } catch {}
+  });
+
+  // ── 純看圖模式 ──────────────────────────────────────────
+  document.getElementById('toggletext')!.addEventListener('click', () => {
+    player.classList.toggle('text-hidden');
+  });
+
+  // ── 離開：要按兩次，防孩子誤觸 ──────────────────────────
+  const exitHint = document.getElementById('exit-hint')!;
+  let armed = false;
+  let armedTimer: number | undefined;
+
+  document.getElementById('exit')!.addEventListener('click', () => {
+    if (armed) {
+      location.href = player.dataset.home || '../';
+      return;
+    }
+    armed = true;
+    exitHint.hidden = false;
+    clearTimeout(armedTimer);
+    armedTimer = setTimeout(() => {
+      armed = false;
+      exitHint.hidden = true;
+    }, 2500) as unknown as number;
+  });
+
+  // ── 問答 ────────────────────────────────────────────────
+  const steps = Array.from(quiz.querySelectorAll<HTMLElement>('.quiz-step'));
+  function goStep(n: number) {
+    steps.forEach((s, k) => {
+      s.classList.toggle('is-active', k === n);
+      s.hidden = k !== n;
+    });
+  }
+
+  function openQuiz() {
+    inQuiz = true;
+    quiz.hidden = false;
+    bar.style.visibility = 'hidden';
+    goStep(0);
+    try {
+      const seen = JSON.parse(localStorage.getItem(KEY_SEEN) ?? '[]');
+      if (!seen.includes(slug)) localStorage.setItem(KEY_SEEN, JSON.stringify([...seen, slug]));
+      localStorage.removeItem(KEY_PROGRESS);
+    } catch {}
+  }
+
+  const feedback = document.getElementById('quiz-feedback')!;
+  const nextBtn = document.getElementById('quiz-next')!;
+  const answer = Number(player.dataset.answer ?? '-1');
+
+  for (const btn of quiz.querySelectorAll<HTMLButtonElement>('.quiz-option')) {
+    btn.addEventListener('click', () => {
+      if (btn.classList.contains('is-wrong') || btn.classList.contains('is-correct')) return;
+      const correct = Number(btn.dataset.i) === answer;
+      if (correct) {
+        btn.classList.add('is-correct');
+        feedback.textContent = player.dataset.explain || '答對了！';
+        feedback.classList.add('is-good');
+        feedback.hidden = false;
+        nextBtn.hidden = false;
+      } else {
+        // 溫和：該選項變灰，但可以再選，不記錯誤次數
+        btn.classList.add('is-wrong');
+        feedback.textContent = '再想想看～';
+        feedback.classList.remove('is-good');
+        feedback.hidden = false;
+      }
+    });
+  }
+
+  nextBtn.addEventListener('click', () => goStep(1));
+  document.getElementById('quiz-done')!.addEventListener('click', () => goStep(2));
+  document.getElementById('quiz-again')!.addEventListener('click', () => {
+    inQuiz = false;
+    quiz.hidden = true;
+    bar.style.visibility = '';
+    show(0);
+  });
+
+  // ── 起始位置：網址 hash 優先，其次問要不要接續 ──────────
+  const fromHash = Number(location.hash.replace('#', '')) - 1;
+  if (fromHash >= 0 && fromHash < count) {
+    show(fromHash, false);
+  } else {
+    show(0, false);
+    try {
+      const saved = Number(localStorage.getItem(KEY_PROGRESS));
+      if (saved > 0 && saved < count) {
+        const resume = document.getElementById('resume')!;
+        document.getElementById('resume-text')!.textContent = `上次看到第 ${saved + 1} 頁`;
+        resume.hidden = false;
+        document.getElementById('resume-yes')!.addEventListener('click', () => {
+          resume.hidden = true;
+          show(saved);
+        });
+        document.getElementById('resume-no')!.addEventListener('click', () => {
+          resume.hidden = true;
+          localStorage.removeItem(KEY_PROGRESS);
+        });
+        setTimeout(() => (resume.hidden = true), 8000);
+      }
+    } catch {}
+  }
+
+  // 說故事時螢幕不要變暗（iOS 16.4+ 支援；需要使用者手勢後才拿得到）
+  let wakeLock: any = null;
+  async function requestWake() {
+    try {
+      wakeLock = await (navigator as any).wakeLock?.request('screen');
+    } catch {}
+  }
+  addEventListener('pointerdown', requestWake, { once: true });
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible' && !wakeLock) requestWake();
+  });
+</script>

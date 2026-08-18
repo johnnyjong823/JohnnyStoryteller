@@ -1,0 +1,67 @@
+---
+import { getCollection } from 'astro:content';
+import BaseLayout from '../layouts/BaseLayout.astro';
+import { url, coverSources } from '../lib/assetUrl';
+
+const all = await getCollection('stories');
+
+// 正式站只顯示 published；本機開發時連 draft 一起顯示，方便邊做邊看
+const stories = all
+  .filter((s) => import.meta.env.DEV || s.data.status === 'published')
+  .sort((a, b) => a.data.title.localeCompare(b.data.title, 'zh-Hant'));
+---
+
+<BaseLayout title="說書人強尼">
+  <main class="page">
+    <header class="site-header">
+      <h1 class="site-title">說書人強尼</h1>
+      <span class="site-sub">{stories.length} 篇故事</span>
+    </header>
+
+    {
+      stories.length === 0 ? (
+        <div class="empty">
+          <strong>還沒有故事。</strong>
+          <br />
+          去 Manus 產一份 JSON（提示詞在 <code>docs/08-用-Manus-產生故事.md</code>），然後：
+          <br />
+          <code>npm run import-story -- ./manus-output.json</code>
+        </div>
+      ) : (
+        <ul class="grid">
+          {stories.map((story) => {
+            const d = story.data;
+            const cover = coverSources(story.id, d.cover);
+            return (
+              <li>
+                <a class="card" href={url(`stories/${story.id}`)}>
+                  <picture>
+                    <source type="image/avif" srcset={cover.avif} sizes="(min-width: 960px) 280px, 45vw" />
+                    <img class="card-cover" src={cover.webp} alt="" loading="lazy" decoding="async" />
+                  </picture>
+                  <div class="card-body">
+                    <h2 class="card-title">{d.title}</h2>
+                    <p class="card-meta">
+                      <span>{d.minutes} 分鐘</span>
+                      <span>{d.ageRange[0]}–{d.ageRange[1]} 歲</span>
+                      {d.status === 'draft' && <span class="badge-draft">草稿</span>}
+                    </p>
+                  </div>
+                </a>
+              </li>
+            );
+          })}
+        </ul>
+      )
+    }
+  </main>
+</BaseLayout>
+
+<script>
+  // 圖片還沒產好時（status 還是 draft），不要顯示破圖
+  for (const img of document.querySelectorAll('img')) {
+    img.addEventListener('error', () => {
+      img.style.visibility = 'hidden';
+    });
+  }
+</script>

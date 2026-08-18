@@ -1,0 +1,24 @@
+node_modules/
+dist/
+.astro/
+
+# prepare-images 產生的響應式變體是建置產物，不進版控。
+# 真正的來源是 src/content/stories/<slug>/images/ 底下的 master 圖。
+public/stories/
+
+# 原始大檔（AI 產出的 PNG/4K）放這裡，永遠不進版控
+**/raw/
+
+.DS_Store
+Thumbs.db
+.env
+.env.production
+
+# manus-prompt 產生的提示詞，每次重跑都會更新
+manus-prompt.txt
+
+# Manus 的原始 JSON：匯入後就沒用了，不進版控
+inbox/*.json
+
+# 本機工具狀態（含本機路徑與 session id，不該進公開 repo）
+.omc/

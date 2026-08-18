@@ -1,0 +1,221 @@
+/*
+ * 設計 token 與全域樣式。
+ * 設計理由見 docs/05-畫面與互動設計.md
+ *
+ * 根本限制：說書人（看文字）與孩子（看圖）共用同一塊手持螢幕。
+ * 所以圖片要大、文字要小到不搶戲但清楚可讀、文字要能一鍵隱藏。
+ */
+
+:root {
+  /* 深色為主 —— 睡前用。不用純黑：純黑跟圖片邊緣的對比太硬 */
+  --bg: #12121a;
+  --bg-elevated: #1c1c26;
+  --bg-sunken: #0d0d14;
+
+  /* 暖白，不用純白 —— 睡前純白太刺眼 */
+  --text: #e8e6e3;
+  --text-dim: #9d9a95;
+  --note: #f0c674; /* 說書人提示，跟正文一眼分得出來 */
+  --accent: #8ab4d8;
+  --correct: #7fc98f;
+  --border: #2c2c3a;
+
+  /* 字級三段（docs/05）。JS 會改這個變數並存進 localStorage */
+  --caption-size: 15px;
+
+  --radius: 12px;
+  --safe-t: env(safe-area-inset-top, 0px);
+  --safe-b: env(safe-area-inset-bottom, 0px);
+  --safe-l: env(safe-area-inset-left, 0px);
+  --safe-r: env(safe-area-inset-right, 0px);
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  /* iOS：關掉下拉刷新與橡皮筋捲動 */
+  overscroll-behavior: none;
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  min-height: 100dvh; /* iOS：不用 100vh，網址列伸縮會讓它跳動 */
+  background: var(--bg);
+  color: var(--text);
+  font-family:
+    system-ui,
+    -apple-system,
+    'Noto Sans TC',
+    'PingFang TC',
+    'Microsoft JhengHei',
+    sans-serif;
+  line-height: 1.7;
+  overscroll-behavior: none;
+}
+
+img {
+  max-width: 100%;
+  display: block;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: none;
+  cursor: pointer;
+  /* iOS：防雙擊放大 */
+  touch-action: manipulation;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* 尊重使用者的減少動態偏好 */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* ── 選單畫面 ─────────────────────────────────────────────── */
+
+.page {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: calc(var(--safe-t) + 20px) calc(var(--safe-r) + 16px)
+    calc(var(--safe-b) + 48px) calc(var(--safe-l) + 16px);
+}
+
+.site-header {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  margin-bottom: 4px;
+}
+
+.site-title {
+  font-size: 22px;
+  font-weight: 700;
+  margin: 0;
+  letter-spacing: 0.02em;
+}
+
+.site-sub {
+  font-size: 13px;
+  color: var(--text-dim);
+}
+
+.grid {
+  list-style: none;
+  padding: 0;
+  margin: 24px 0 0;
+  display: grid;
+  gap: 16px;
+  /* 手機 2 欄、平板 3–4 欄（docs/05） */
+  grid-template-columns: repeat(2, 1fr);
+}
+
+@media (min-width: 640px) {
+  .grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+@media (min-width: 960px) {
+  .grid {
+    grid-template-columns: repeat(4, 1fr);
+  }
+}
+
+.card {
+  display: block; /* 點擊區域 = 整張卡片，不是只有標題 */
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  transition: transform 0.15s ease, border-color 0.15s ease;
+}
+
+.card:active {
+  transform: scale(0.98);
+}
+
+@media (hover: hover) {
+  .card:hover {
+    border-color: var(--accent);
+  }
+}
+
+.card-cover {
+  aspect-ratio: 4 / 3;
+  background: var(--bg-sunken);
+  width: 100%;
+  object-fit: cover;
+}
+
+.card-body {
+  padding: 10px 12px 12px;
+}
+
+.card-title {
+  font-size: 15px;
+  font-weight: 600;
+  margin: 0 0 4px;
+  line-height: 1.4;
+}
+
+.card-meta {
+  font-size: 12px;
+  color: var(--text-dim);
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.badge-draft {
+  font-size: 11px;
+  color: var(--note);
+  border: 1px solid var(--note);
+  border-radius: 4px;
+  padding: 0 4px;
+}
+
+.empty {
+  margin-top: 48px;
+  padding: 32px;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius);
+  color: var(--text-dim);
+  font-size: 14px;
+  line-height: 2;
+}
+
+.empty code {
+  color: var(--accent);
+  font-size: 13px;
+}
