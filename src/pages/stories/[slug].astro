@@ -256,11 +256,34 @@ const q2 = d.quiz[1];
     .panel {
       position: absolute;
       left: 0;
-      right: 0;
+      right: auto;
       bottom: 0;
+      /* 只包住文字，不要橫跨整個畫面 —— 蓋住的圖越少越好 */
+      width: fit-content;
+      max-width: min(72%, 60ch);
       max-height: 42%;
-      background: linear-gradient(to top, rgba(9, 9, 14, 0.94) 65%, rgba(9, 9, 14, 0));
+      background: none;
       padding-top: 34px;
+      padding-right: 56px; /* 留給右側漸層淡出的空間 */
+    }
+
+    /*
+     * 漸層畫在虛擬元素上，再用 mask 讓它往右淡出。
+     * 直接對 .panel 下 mask 會連文字一起變透明，所以要分開：
+     * 底色在 ::before，文字在上層（見下方 .panel > *）。
+     */
+    .panel::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(to top, rgba(9, 9, 14, 0.94) 62%, rgba(9, 9, 14, 0));
+      -webkit-mask-image: linear-gradient(to right, #000 62%, transparent);
+      mask-image: linear-gradient(to right, #000 62%, transparent);
+      pointer-events: none;
+    }
+
+    .panel > * {
+      position: relative; /* 疊在 ::before 之上，文字不受 mask 影響 */
     }
   }
 
@@ -269,7 +292,7 @@ const q2 = d.quiz[1];
     display: none;
   }
 
-  /* ── 底部列 ── */
+  /* ── 底部列（點畫面中間可收合）── */
   .bar {
     display: flex;
     align-items: center;
@@ -277,6 +300,23 @@ const q2 = d.quiz[1];
     padding: 8px calc(var(--safe-r) + 14px) calc(var(--safe-b) + 8px) calc(var(--safe-l) + 14px);
     background: var(--bg);
     border-top: 1px solid var(--border);
+    transition: transform 0.25s ease, margin-bottom 0.25s ease;
+  }
+
+  /*
+   * 向下滑出畫面，同時用負的 margin-bottom 把 grid 的那一列收掉，
+   * 上方的圖片才會補上空出來的位置（不然會留一塊黑）。
+   * --bar-h 由 JS 量測後寫入，因為安全區距在不同裝置上不一樣。
+   */
+  .player.bar-hidden .bar {
+    transform: translateY(100%);
+    margin-bottom: calc(-1 * var(--bar-h, 57px));
+    pointer-events: none;
+  }
+
+  /* 還原上次狀態時不播動畫 */
+  .player:not(.ready) .bar {
+    transition: none;
   }
 
   .dots {
@@ -553,6 +593,39 @@ const q2 = d.quiz[1];
   const next = () => (inQuiz ? null : show(idx + 1));
   const prev = () => (inQuiz ? null : show(idx - 1));
 
+  // ── 底部列收合 ──────────────────────────────────────────
+  const KEY_BAR = 'js:bar-hidden';
+
+  /** 安全區距在不同裝置上不一樣，高度要量出來給 CSS 用 */
+  function measureBar() {
+    player.style.setProperty('--bar-h', `${bar.offsetHeight}px`);
+  }
+
+  function toggleBar() {
+    const hidden = player.classList.toggle('bar-hidden');
+    try {
+      localStorage.setItem(KEY_BAR, hidden ? '1' : '0');
+    } catch {}
+  }
+
+  measureBar();
+  addEventListener('resize', measureBar);
+  addEventListener('orientationchange', () => setTimeout(measureBar, 250));
+
+  try {
+    if (localStorage.getItem(KEY_BAR) === '1') player.classList.add('bar-hidden');
+  } catch {}
+  // 還原上次的收合狀態時不要播動畫，不然每次開故事都閃一下
+  requestAnimationFrame(() => player.classList.add('ready'));
+
+  /** 左 1/3 上一頁、中間 1/3 收合底部列、右 1/3 下一頁 */
+  function tapAt(x: number) {
+    const third = innerWidth / 3;
+    if (x < third) prev();
+    else if (x > third * 2) next();
+    else toggleBar();
+  }
+
   // ── 手勢：滑動翻頁 + 點擊左右半邊 ──────────────────────
   const SWIPE = 45; // px，超過就算滑動
   const TAP = 12; // px，小於就算點擊
@@ -590,8 +663,7 @@ const q2 = d.quiz[1];
       if (Math.abs(dx) > SWIPE && Math.abs(dx) > Math.abs(dy)) {
         dx < 0 ? next() : prev();
       } else if (Math.abs(dx) < TAP && Math.abs(dy) < TAP) {
-        // 點擊：右半邊下一頁、左半邊上一頁
-        t.clientX > innerWidth / 2 ? next() : prev();
+        tapAt(t.clientX);
       }
     },
     { passive: true },
@@ -602,7 +674,7 @@ const q2 = d.quiz[1];
   slidesEl.addEventListener('touchend', () => (touchedAt = Date.now()), { passive: true });
   slidesEl.addEventListener('click', (e) => {
     if (Date.now() - touchedAt < 600) return;
-    (e as MouseEvent).clientX > innerWidth / 2 ? next() : prev();
+    tapAt((e as MouseEvent).clientX);
   });
 
   // 鍵盤：次要支援
