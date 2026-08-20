@@ -7,6 +7,16 @@ tags: ["好奇", "努力", "夜晚"]
 ageRange: [7, 8]
 minutes: 7
 
+# 太陽系系列第 1 篇（order = 離太陽的順序），結尾會自動推薦下一篇（金星）
+series:
+  name: "太陽系"
+  order: 1
+
+# 預留：故事裡提到赫耳墨斯。等這個 slug 的故事存在且 published，
+# 結尾就會自動出現「故事裡提到的」連結；在那之前完全不顯示。
+# ⚠ 之後產赫耳墨斯的故事時，資料夾名要用這個 slug（或回來改這裡）。
+related: ["hermes-winged-messenger"]
+
 # 圖片都放好之後，把這裡改成 published 就會上線
 status: "draft"
 
