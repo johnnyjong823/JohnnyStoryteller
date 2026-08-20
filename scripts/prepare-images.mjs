@@ -18,7 +18,16 @@
  * 見 docs/04-圖片製作指南.md
  */
 
-import { readdir, mkdir, stat, rename, writeFile } from 'node:fs/promises';
+import {
+  readdir,
+  mkdir,
+  stat,
+  rename,
+  writeFile,
+  readFile,
+  copyFile,
+  unlink,
+} from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 import sharp from 'sharp';
@@ -28,6 +37,7 @@ const OUT_ROOT = path.join('public', 'stories');
 
 const MASTER_WIDTH = 1600;
 const MASTER_QUALITY = 80;
+const MASTER_MAX_BYTES = 300 * 1024; // 交付規格：每張 < 300 KB（docs/04）
 /** 低於這個寬度的 master 會被警告：放大的變體只是浪費位元組 */
 const MIN_USEFUL_WIDTH = 1440;
 
@@ -72,6 +82,30 @@ async function mtime(p) {
   }
 }
 
+/**
+ * Windows 專用的搬檔重試。
+ *
+ * 縮圖產生器（dllhost）、防毒、檔案總管預覽窗格都可能短暫鎖住剛寫過的圖，
+ * rename 就會吐 EBUSY／EPERM。退讓重試，最後才退到「複製再刪除」。
+ * 這裡不能吞掉錯誤：原始 PNG 留在 images/ 會被 git 收進版控（見 CLAUDE.md 規則 4）。
+ */
+async function moveOut(from, to, tries = 4) {
+  for (let i = 0; ; i++) {
+    try {
+      await rename(from, to);
+      return;
+    } catch (err) {
+      if (err.code !== 'EBUSY' && err.code !== 'EPERM') throw err;
+      if (i >= tries) {
+        await copyFile(from, to);
+        await unlink(from); // 失敗就讓它炸，原檔絕不能留在 images/
+        return;
+      }
+      await new Promise((r) => setTimeout(r, 150 * 2 ** i));
+    }
+  }
+}
+
 /** 把 AI 產出的 png/jpg（或過大的 webp）整理成規格內的 master */
 async function ensureMaster(imagesDir, rawDir, file) {
   const ext = path.extname(file);
@@ -83,28 +117,44 @@ async function ensureMaster(imagesDir, rawDir, file) {
 
   const src = path.join(imagesDir, file);
   const master = path.join(imagesDir, `${stem}.webp`);
-  const meta = await sharp(src).metadata();
-  const isWebp = ext.toLowerCase() === '.webp';
+  // 一定要先整個讀成 Buffer 再餵給 sharp。
+  // sharp(路徑) 會讓 libvips 把來源檔開著，Windows 上接下來的 rename／覆寫
+  // 就會拿到 EBUSY（2026-08-19 實際踩到，整批圖處理到第一張就斷）。
+  const srcBuf = await readFile(src);
+  const meta = await sharp(srcBuf).metadata();
+  // ⚠ 格式看內容，不信副檔名 —— AI 工具下載的常是「改了名的 PNG」（火星那批
+  //   12 張就是：.webp 副檔名、PNG 內容、每張 6 MB），信副檔名會直接放行進版控。
+  const isWebp = meta.format === 'webp';
   const oversized = (meta.width ?? 0) > MASTER_WIDTH;
+  const tooHeavy = srcBuf.length > MASTER_MAX_BYTES;
 
-  // 已經是規格內的 master，不動它
-  if (isWebp && !oversized) return master;
+  // 已經是規格內的 master（真 webp、寬度夠、容量達標），不動它
+  if (isWebp && !oversized && !tooHeavy) return master;
 
-  const buf = await sharp(src)
+  const buf = await sharp(srcBuf)
     .rotate() // 依 EXIF 轉正
     .resize({ width: MASTER_WIDTH, withoutEnlargement: true })
     .webp({ quality: MASTER_QUALITY })
     .toBuffer();
 
-  await writeFile(master, buf);
-
   if (!isWebp) {
-    // 原始大檔移到 raw/（gitignored）—— git 歷史刪不掉，原檔絕不能進版控
+    // 原始大檔移到 raw/（gitignored）—— git 歷史刪不掉，原檔絕不能進版控。
+    // 副檔名說謊時（.webp 的 PNG），src 就是 master 本人，一定要先搬走再寫，
+    // 順序反了會把剛壓好的 master 搬進 raw/。raw/ 裡用真實格式命名才看得懂。
     await mkdir(rawDir, { recursive: true });
-    await rename(src, path.join(rawDir, file));
-    log(`  ↻ ${file} → ${stem}.webp (${kb(buf.length)})，原檔移到 raw/`);
+    const fmt = meta.format === 'jpeg' ? 'jpg' : (meta.format ?? 'bin');
+    const rawName = ext.toLowerCase() === `.${fmt}` ? file : `${stem}.${fmt}`;
+    await moveOut(src, path.join(rawDir, rawName));
+    await writeFile(master, buf);
+    log(`  ↻ ${file}（實際是 ${meta.format}）→ ${stem}.webp (${kb(buf.length)})，原檔移到 raw/${rawName}`);
   } else {
-    log(`  ↻ ${file} 太寬（${meta.width}px）→ 縮到 ${MASTER_WIDTH}px (${kb(buf.length)})`);
+    await writeFile(master, buf);
+    const why = oversized ? `太寬（${meta.width}px）` : `太肥（${kb(srcBuf.length)}）`;
+    log(`  ↻ ${file} ${why} → 重壓成 ${kb(buf.length)}`);
+  }
+
+  if (buf.length > MASTER_MAX_BYTES) {
+    warn(`  ⚠ ${stem}.webp 重壓後仍有 ${kb(buf.length)}（規格 < ${kb(MASTER_MAX_BYTES)}）— 這張圖太複雜，考慮換一張`);
   }
   return master;
 }
