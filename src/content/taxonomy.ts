@@ -34,5 +34,16 @@ export const TAGS = [
   '誠實', '耐心', '努力', '好奇', '負責任', '同理心',
 ] as const;
 
+/**
+ * 系列：選填、單選。同系列的故事用 `series.order` 排先後，
+ * 播放結尾會自動推薦「下一篇」。
+ * 跟標籤一樣走白名單 —— 系列名打錯一個字（太陽系/大陽系）就會斷成兩個系列，
+ * 讓它在 build 時爆炸。
+ */
+export const SERIES = [
+  '太陽系',
+] as const;
+
 export type Category = (typeof CATEGORIES)[number];
 export type Tag = (typeof TAGS)[number];
+export type Series = (typeof SERIES)[number];

@@ -1,16 +1,66 @@
 ---
 import { getCollection } from 'astro:content';
 import BaseLayout from '../../layouts/BaseLayout.astro';
-import { url, sceneSources } from '../../lib/assetUrl';
+import { url, sceneSources, coverSources } from '../../lib/assetUrl';
 
 export async function getStaticPaths() {
   const all = await getCollection('stories');
-  return all
-    .filter((s) => import.meta.env.DEV || s.data.status === 'published')
-    .map((story) => ({ params: { slug: story.id }, props: { story } }));
+  const visible = all.filter((s) => import.meta.env.DEV || s.data.status === 'published');
+
+  /** slug 的簡單雜湊：讓「隨便挑一篇」對同一篇故事是穩定的，不會每次 build 亂跳 */
+  function hash(s: string) {
+    let h = 0;
+    for (const c of s) h = (h * 31 + c.charCodeAt(0)) >>> 0;
+    return h;
+  }
+
+  type Rec = { id: string; title: string; cover: string; label: string };
+
+  /**
+   * 結尾推薦，最多 2 張卡：
+   * ① 同系列的下一篇（order 比自己大的最小那篇）
+   * ② 故事裡提到的（related）—— 預留的 slug 在那篇存在且可見之前不顯示
+   * ③ 都沒有時：同分類隨便一篇（沒有同分類就全站隨便一篇）
+   */
+  function pickRecs(story: (typeof all)[number]): Rec[] {
+    const d = story.data;
+    const recs: Rec[] = [];
+
+    const ser = d.series;
+    if (ser) {
+      const next = visible
+        .filter((s) => s.data.series && s.data.series.name === ser.name && s.data.series.order > ser.order)
+        .sort((a, b) => (a.data.series?.order ?? 0) - (b.data.series?.order ?? 0))[0];
+      if (next)
+        recs.push({ id: next.id, title: next.data.title, cover: next.data.cover, label: `${ser.name}・下一篇` });
+    }
+
+    for (const slug of d.related) {
+      if (slug === story.id) continue;
+      const hit = visible.find((s) => s.id === slug);
+      if (hit && !recs.some((r) => r.id === hit.id)) {
+        recs.push({ id: hit.id, title: hit.data.title, cover: hit.data.cover, label: '故事裡提到的' });
+      } else if (!all.some((s) => s.id === slug)) {
+        // 預留是刻意設計（等那篇上線連結才出現），但也可能是打錯字，build 時提醒一聲
+        console.warn(`ℹ ${story.id} 的 related "${slug}" 還沒有對應的故事，結尾先不顯示（預留正常，但確認一下不是打錯字）`);
+      }
+    }
+
+    if (recs.length === 0) {
+      const pool = visible.filter((s) => s.id !== story.id);
+      const sameCat = pool.filter((s) => s.data.category === d.category);
+      const from = sameCat.length > 0 ? sameCat : pool;
+      const pick = from[hash(story.id) % from.length];
+      if (pick) recs.push({ id: pick.id, title: pick.data.title, cover: pick.data.cover, label: '再說一篇' });
+    }
+
+    return recs.slice(0, 2);
+  }
+
+  return visible.map((story) => ({ params: { slug: story.id }, props: { story, recs: pickRecs(story) } }));
 }
 
-const { story } = Astro.props;
+const { story, recs } = Astro.props;
 const d = story.data;
 const q1 = d.quiz[0];
 const q2 = d.quiz[1];
@@ -85,6 +135,27 @@ const q2 = d.quiz[1];
 
       <div class="quiz-step" data-step="2" hidden>
         <h2 class="quiz-end">故事說完了 🌙</h2>
+        {
+          recs.length > 0 && (
+            <div class="recs">
+              {recs.map((r) => {
+                const cover = coverSources(r.id, r.cover);
+                return (
+                  <a class="rec" href={url(`stories/${r.id}`)}>
+                    <picture>
+                      <source type="image/avif" srcset={cover.avif} sizes="72px" />
+                      <img class="rec-cover" src={cover.webp} alt="" loading="lazy" decoding="async" />
+                    </picture>
+                    <span class="rec-body">
+                      <span class="rec-label">{r.label}</span>
+                      <span class="rec-title">{r.title}</span>
+                    </span>
+                  </a>
+                );
+              })}
+            </div>
+          )
+        }
         <div class="quiz-end-actions">
           <button class="quiz-next" id="quiz-again">再看一次</button>
           <a class="quiz-next is-ghost" href={url('')}>回故事列表</a>
@@ -141,7 +212,7 @@ const q2 = d.quiz[1];
     top: calc(var(--safe-t) + 18px);
     right: calc(var(--safe-r) + 60px);
     z-index: 20;
-    font-size: 13px;
+    font-size: 15px;
     color: var(--text-dim);
     background: rgba(0, 0, 0, 0.6);
     padding: 4px 10px;
@@ -209,8 +280,11 @@ const q2 = d.quiz[1];
     /* ⚠ 必須用 dvh，不能用 %。
        百分比 max-height 是相對「自己的 grid 區域」解析的，
        45% 會變成「自己高度的 45%」—— 面板把自己壓扁成 57px，
-       說書人提示整段被切掉。dvh 相對視窗，沒有循環定義問題。 */
-    max-height: 45dvh;
+       說書人提示整段被切掉。dvh 相對視窗，沒有循環定義問題。
+       乘上 --caption-scale：說書人把字調大，就是在說「現在文字比較重要」，
+       上限跟著放寬，字大了卻被切掉才是最糟的。矮螢幕再給一個絕對下限。
+       面板只會長到內容需要的高度，文字短的時候不會多吃圖片的空間。 */
+    max-height: max(calc(45dvh * var(--caption-scale)), 270px);
     overflow-y: auto;
     touch-action: pan-y;
     background: var(--bg);
@@ -227,7 +301,8 @@ const q2 = d.quiz[1];
 
   .note {
     margin: 10px 0 0;
-    font-size: calc(var(--caption-size) - 2px);
+    /* 等比，不用固定的 -2px —— caption 放大到 24px 時差 2px 看起來就一樣大了 */
+    font-size: calc(var(--caption-size) * 0.9);
     line-height: 1.7;
     color: var(--note);
     white-space: pre-line;
@@ -261,7 +336,10 @@ const q2 = d.quiz[1];
       /* 只包住文字，不要橫跨整個畫面 —— 蓋住的圖越少越好 */
       width: fit-content;
       max-width: min(72%, 60ch);
-      max-height: 42%;
+      /* 橫向的面板是疊在圖片上的（絕對定位），長高不會壓縮圖片，
+         所以上限可以比直向寬鬆。手機橫向只有 390px 高，比例算出來太小，
+         再給一個絕對下限。同樣乘上 --caption-scale。 */
+      max-height: max(calc(50% * var(--caption-scale)), 280px);
       background: none;
       padding-top: 34px;
       padding-right: 56px; /* 留給右側漸層淡出的空間 */
@@ -340,16 +418,16 @@ const q2 = d.quiz[1];
   }
 
   .counter {
-    font-size: 12px;
+    font-size: 13px;
     color: var(--text-dim);
     font-variant-numeric: tabular-nums;
   }
 
   .bar button {
     min-width: 44px;
-    height: 40px;
+    height: 44px;
     border-radius: 8px;
-    font-size: 14px;
+    font-size: 17px;
     color: var(--text-dim);
   }
 
@@ -392,13 +470,13 @@ const q2 = d.quiz[1];
   }
 
   .quiz-label {
-    font-size: 13px;
+    font-size: 15px;
     color: var(--text-dim);
     margin: 0 0 18px;
   }
 
   .quiz-q {
-    font-size: 20px;
+    font-size: 23px;
     line-height: 1.6;
     margin: 0 0 28px;
     font-weight: 600;
@@ -415,7 +493,7 @@ const q2 = d.quiz[1];
     border-radius: var(--radius);
     background: var(--bg-elevated);
     border: 1px solid var(--border);
-    font-size: 17px;
+    font-size: 19px;
     padding: 12px 16px;
     transition: transform 0.12s ease;
   }
@@ -455,7 +533,7 @@ const q2 = d.quiz[1];
 
   .quiz-feedback {
     margin: 20px 0 0;
-    font-size: 15px;
+    font-size: 17px;
     line-height: 1.8;
     color: var(--text-dim);
   }
@@ -465,13 +543,13 @@ const q2 = d.quiz[1];
   }
 
   .quiz-hint-label {
-    font-size: 13px;
+    font-size: 15px;
     color: var(--text-dim);
     margin: -14px 0 22px;
   }
 
   .quiz-hint {
-    font-size: 14px;
+    font-size: 17px;
     line-height: 1.8;
     color: var(--note);
     background: var(--bg-elevated);
@@ -489,7 +567,7 @@ const q2 = d.quiz[1];
     border-radius: var(--radius);
     background: var(--accent);
     color: #0d0d14;
-    font-size: 16px;
+    font-size: 18px;
     font-weight: 600;
   }
 
@@ -501,8 +579,120 @@ const q2 = d.quiz[1];
   }
 
   .quiz-end {
-    font-size: 24px;
+    font-size: 27px;
     margin: 0;
+  }
+
+  /* ── 結尾推薦（同系列下一篇 / 故事裡提到的 / 再說一篇）── */
+  .recs {
+    display: grid;
+    /* minmax(0,1fr)：中文長標題沒有斷點，不擋住會把卡片撐出畫面 */
+    grid-template-columns: minmax(0, 1fr);
+    gap: 10px;
+    margin: 26px 0 0;
+    text-align: left;
+  }
+
+  .rec {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    min-height: 64px; /* 跟選項按鈕一樣的觸控目標（docs/05） */
+    padding: 10px;
+    border-radius: var(--radius);
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    color: var(--text);
+    transition: transform 0.12s ease;
+  }
+
+  .rec:active {
+    transform: scale(0.98);
+  }
+
+  .rec picture {
+    flex: none;
+    line-height: 0;
+  }
+
+  .rec-cover {
+    width: 72px;
+    height: 54px;
+    object-fit: cover;
+    border-radius: calc(var(--radius) - 4px);
+    background: var(--bg-sunken);
+  }
+
+  .rec-body {
+    min-width: 0;
+    display: grid;
+    gap: 2px;
+  }
+
+  .rec-label {
+    font-size: 13px;
+    color: var(--accent);
+  }
+
+  .rec-title {
+    font-size: 17px;
+    font-weight: 600;
+    overflow-wrap: anywhere;
+  }
+
+  /* 平板：問答的字也要跟著大 —— 孩子是從稍遠的地方看選項 */
+  @media (min-width: 640px) and (min-height: 620px) {
+    .quiz-q {
+      font-size: 27px;
+    }
+
+    .quiz-option {
+      font-size: 21px;
+      min-height: 72px;
+    }
+
+    .quiz-hint,
+    .quiz-feedback {
+      font-size: 19px;
+    }
+
+    .quiz-next {
+      font-size: 19px;
+    }
+  }
+
+  /*
+   * 矮螢幕：內容比視窗高時，align-content:center 會把上半部推到
+   * 捲不到的地方（grid 的置中溢出不是「safe」的），題目的第一行會消失。
+   */
+  @media (max-height: 520px) {
+    .quiz {
+      align-content: start;
+    }
+
+    /* 矮螢幕（手機橫向）的問答本來就一定超出一個畫面：
+       選項至少 64px 高是硬性規定（docs/05），不能為了塞進去而縮。
+       能做的是把留白收緊，少捲一點。 */
+    .quiz-label {
+      margin-bottom: 10px;
+    }
+
+    .quiz-q {
+      font-size: 20px;
+      margin-bottom: 16px;
+    }
+
+    .quiz-hint-label {
+      margin: -8px 0 12px;
+    }
+
+    .quiz-hint {
+      margin-bottom: 16px;
+    }
+
+    .quiz-next {
+      margin-top: 16px;
+    }
   }
 
   .quiz-end-actions {
@@ -526,7 +716,7 @@ const q2 = d.quiz[1];
     border: 1px solid var(--border);
     border-radius: 999px;
     padding: 8px 10px 8px 16px;
-    font-size: 13px;
+    font-size: 15px;
     box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
     max-width: calc(100vw - 32px);
   }
@@ -537,7 +727,7 @@ const q2 = d.quiz[1];
     border-radius: 999px;
     background: var(--accent);
     color: #0d0d14;
-    font-size: 13px;
+    font-size: 15px;
     font-weight: 600;
     white-space: nowrap;
   }
@@ -689,19 +879,24 @@ const q2 = d.quiz[1];
   });
 
   // ── 字級三段 ────────────────────────────────────────────
-  const SIZES = [13, 15, 18];
+  // 倍率，不是 px —— 實際大小 = --caption-base（隨螢幕大小變，見 global.css）× 倍率。
+  // 寫死 px 會用行內樣式蓋掉 global.css 的斷點，平板就放大不了。
+  const STEPS = [0.8, 1, 1.25];
   let fontStep = 1;
   function applyFont() {
-    document.documentElement.style.setProperty('--caption-size', `${SIZES[fontStep]}px`);
+    document.documentElement.style.setProperty('--caption-scale', String(STEPS[fontStep]));
   }
   try {
-    const saved = Number(localStorage.getItem(KEY_FONT));
-    if (saved >= 0 && saved < SIZES.length) fontStep = saved;
+    // ⚠ 不能直接 Number(getItem(...))：沒存過時 getItem 回 null，Number(null) 是 0，
+    //   0 通過「>= 0」的檢查 —— 結果每個第一次來的使用者都被設成「小」字級。
+    const saved = localStorage.getItem(KEY_FONT);
+    const n = Number(saved);
+    if (saved !== null && Number.isInteger(n) && n >= 0 && n < STEPS.length) fontStep = n;
   } catch {}
   applyFont();
 
   document.getElementById('fontsize')!.addEventListener('click', () => {
-    fontStep = (fontStep + 1) % SIZES.length;
+    fontStep = (fontStep + 1) % STEPS.length;
     applyFont();
     try {
       localStorage.setItem(KEY_FONT, String(fontStep));
@@ -775,6 +970,11 @@ const q2 = d.quiz[1];
         feedback.hidden = false;
       }
     });
+  }
+
+  // 推薦卡的封面還沒產好時（對方還是 draft），藏起破圖不要嚇人
+  for (const img of quiz.querySelectorAll('img')) {
+    img.addEventListener('error', () => (img.style.visibility = 'hidden'));
   }
 
   nextBtn.addEventListener('click', () => goStep(1));

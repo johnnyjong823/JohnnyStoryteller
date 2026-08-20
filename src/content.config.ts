@@ -1,6 +1,6 @@
 import { defineCollection, z } from 'astro:content';
 import { glob } from 'astro/loaders';
-import { CATEGORIES, TAGS } from './content/taxonomy';
+import { CATEGORIES, TAGS, SERIES } from './content/taxonomy';
 
 /**
  * 內容的守門員。
@@ -48,6 +48,27 @@ const stories = defineCollection({
       ageRange: z.tuple([z.number().int(), z.number().int()]),
       minutes: z.number().positive(),
       status: z.enum(['draft', 'published']),
+      // 系列（選填）：結尾自動推薦同系列的下一篇。order 從 1 開始（太陽系就用行星順序）
+      series: z
+        .object({
+          name: z.enum(SERIES),
+          order: z.number().int().positive(),
+        })
+        .optional(),
+      // 關聯故事（選填）：故事裡提到的其他故事，放資料夾名（slug）。
+      // 可以「預留」還不存在的故事 —— 等那篇存在且 published，結尾才會出現連結，
+      // 在那之前完全不顯示，所以先寫上去是安全的。
+      related: z
+        .array(
+          z
+            .string()
+            .regex(
+              /^[a-z0-9]+(-[a-z0-9]+)*$/,
+              'related 放故事資料夾名（slug）：小寫英數 + 連字號，例如 "hermes-winged-messenger"',
+            ),
+        )
+        .max(4)
+        .default([]),
       scenes: z.array(sceneSchema).min(8).max(16),
       quiz: z.array(quizSchema).length(2, 'quiz 必須剛好 2 題'),
     })

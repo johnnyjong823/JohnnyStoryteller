@@ -209,6 +209,12 @@ function toFrontmatter(d) {
   L.push(`ageRange: [${d.ageRange[0]}, ${d.ageRange[1]}]`);
   L.push(`minutes: ${d.minutes}`);
   L.push('');
+  L.push('# 系列與關聯故事（選填，手動加 —— Manus 不會產這兩個欄位，見 docs/03）');
+  L.push('# series:');
+  L.push('#   name: "太陽系"');
+  L.push('#   order: 1');
+  L.push('# related: ["故事裡提到的其他故事的-slug"]   # 可預留還不存在的故事');
+  L.push('');
   L.push('# 圖片都放好之後，把這裡改成 published 就會上線');
   L.push('status: "draft"');
   L.push('');
