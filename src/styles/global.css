@@ -20,14 +20,58 @@
   --correct: #7fc98f;
   --border: #2c2c3a;
 
-  /* 字級三段（docs/05）。JS 會改這個變數並存進 localStorage */
-  --caption-size: 15px;
+  /*
+   * 說書人的閱讀字級（docs/05「字級階梯」）。
+   * --caption-base  隨螢幕大小變：手機直向 / 平板 / 手機橫向，見下方斷點
+   * --caption-scale 底部列「Aa」的三段調整，由 JS 寫入並存進 localStorage
+   *
+   * ⚠ JS 要改的是 --caption-scale，不是 --caption-size。
+   *   直接設 --caption-size 會用行內樣式蓋掉整條 calc，平板的斷點就失效了。
+   */
+  --caption-base: 19px;
+  --caption-scale: 1;
+  --caption-size: calc(var(--caption-base) * var(--caption-scale));
 
   --radius: 12px;
   --safe-t: env(safe-area-inset-top, 0px);
   --safe-b: env(safe-area-inset-bottom, 0px);
   --safe-l: env(safe-area-inset-left, 0px);
   --safe-r: env(safe-area-inset-right, 0px);
+}
+
+/* 平板拿得比手機遠，字要跟著大，不然說書人要湊近看 */
+@media (min-width: 640px) {
+  :root {
+    --caption-base: 22px;
+  }
+}
+
+/*
+ * 矮的手機（≈360×640 以下）：直向的文字面板上限是 45dvh，
+ * 用 19px 會裝不下比較長的說書人提示，整段被切掉要捲才看得到。
+ */
+@media (orientation: portrait) and (max-height: 700px) {
+  :root {
+    --caption-base: 17px;
+  }
+}
+
+/* 最窄的手機（320px，iPhone SE 一代）：一行塞不下幾個字，再小一階才不會被切掉 */
+@media (orientation: portrait) and (max-width: 340px) {
+  :root {
+    --caption-base: 16px;
+  }
+}
+
+/*
+ * 矮螢幕（多半是手機橫向）：只有 390px 左右的高度，
+ * 用平板字級會爆出面板上限、逼說書人捲動。
+ * ⚠ 這條一定要排在平板那條之後 —— 手機橫向的寬度也 ≥ 640px，靠順序蓋掉。
+ */
+@media (orientation: landscape) and (max-height: 520px) {
+  :root {
+    --caption-base: 17px;
+  }
 }
 
 *,
@@ -133,14 +177,14 @@ a {
 }
 
 .site-title {
-  font-size: 22px;
+  font-size: 24px;
   font-weight: 700;
   margin: 0;
   letter-spacing: 0.02em;
 }
 
 .site-sub {
-  font-size: 13px;
+  font-size: 14px;
   color: var(--text-dim);
 }
 
@@ -157,6 +201,15 @@ a {
 @media (min-width: 640px) {
   .grid {
     grid-template-columns: repeat(3, 1fr);
+  }
+
+  /* 平板：卡片本身變大，字也要跟著大 */
+  .site-title {
+    font-size: 28px;
+  }
+
+  .site-sub {
+    font-size: 15px;
   }
 }
 
@@ -197,22 +250,33 @@ a {
 }
 
 .card-title {
-  font-size: 15px;
+  font-size: 17px;
   font-weight: 600;
   margin: 0 0 4px;
   line-height: 1.4;
 }
 
 .card-meta {
-  font-size: 12px;
+  font-size: 13px;
   color: var(--text-dim);
   display: flex;
   gap: 8px;
   align-items: center;
 }
 
+/* ⚠ 必須排在上面 .card-title / .card-meta 之後：同特異性靠順序決勝 */
+@media (min-width: 640px) {
+  .card-title {
+    font-size: 18px;
+  }
+
+  .card-meta {
+    font-size: 14px;
+  }
+}
+
 .badge-draft {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--note);
   border: 1px solid var(--note);
   border-radius: 4px;
@@ -225,11 +289,11 @@ a {
   border: 1px dashed var(--border);
   border-radius: var(--radius);
   color: var(--text-dim);
-  font-size: 14px;
+  font-size: 16px;
   line-height: 2;
 }
 
 .empty code {
   color: var(--accent);
-  font-size: 13px;
+  font-size: 15px;
 }
