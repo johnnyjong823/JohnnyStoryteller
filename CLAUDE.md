@@ -14,7 +14,8 @@ repo 名稱定為 **`JohnnyStoryteller`**，所以 `base` 是 `/JohnnyStorytelle
 
 還沒做：選單的搜尋與分類篩選（階段 3）、PWA 離線（階段 4）。見 [docs/07-實作路線圖.md](docs/07-實作路線圖.md)。
 
-`src/content/stories/demo-brave-owl/` 是示範故事（佔位圖），真實故事進來後可以整個資料夾刪掉。
+真實故事已開始進站（`mercury-swift-messenger`、`venus-cloud-dress`，尚為 draft）。
+`src/content/stories/demo-brave-owl/` 是示範故事（佔位圖），真實故事穩定上線後可以整個資料夾刪掉。
 
 ## 這是什麼
 
@@ -98,6 +99,10 @@ assetUrl(storySlug, file)   // ✅
   說書人提示整段看不到。要用 **`dvh`** 這類相對視窗的單位。
   這兩個 bug 都是我改版型時引入、靠實際量測 `getBoundingClientRect()` 才抓到的 ——
   **改完版型一定要量，不能只看截圖**（截圖上「文字少一行」很容易被當成正常）。
+- **`Number(localStorage.getItem(k))` 在沒存過的時候是 `0`，不是 `NaN`。**
+  `getItem` 回 `null`，`Number(null)` 是 `0`，於是 `if (saved >= 0 && saved < 3)`
+  這種檢查會通過 —— 結果每一個第一次來的使用者都被設成第 0 段（最小字級），
+  永遠拿不到預設值。要先擋 `null` 再轉數字。（2026-08-19 抓到，字級被卡在最小）
 - **UI 改動要真的看畫面**，這個專案的 bug 幾乎都是視覺性的。零安裝的做法：
   ```bash
   # 直接截圖
@@ -116,16 +121,23 @@ assetUrl(storySlug, file)   // ✅
 
 | 指令 | 用途 |
 |---|---|
-| `npm run dev` | 本機開發。**會一起顯示 draft 故事**（正式站不會） |
+| `npm run dev` | 先跑 `prepare-images --all --quiet` 補齊變體再開 dev server。**會一起顯示 draft 故事**（正式站不會） |
 | `npm run build` | `prepare-images --all` + `astro build`。**內容有錯會在這裡失敗** |
 | `npm run check` | 型別檢查（`astro check`） |
-| `npm run import-story -- <json>` | Manus 的 JSON → `index.md` + `prompts.md` |
+| `npm run import-story` | Manus 的 JSON → `index.md` + `prompts.md`。不帶參數自動抓 `inbox/` 裡的 JSON；也可 `-- <json>`，`--force` 覆蓋既有故事 |
 | `npm run placeholders -- <slug>` | 產佔位圖，故事沒美術也能先跑完整流程 |
 | `npm run prepare-images -- <slug>` | 整理 master（1600px WebP q80）+ 產響應式變體 |
 | `npm run manus-prompt -- "構想"` | 產生要貼給 Manus 的提示詞（白名單自動注入） |
 | `start.bat` | 本地測試，含手機可連的區網網址 |
 
 ⚠ npm script 傳參數要用 `--` 分隔：`npm run prepare-images -- my-slug`。
+
+### 新增一篇故事（完整說明見 README.md、docs/08）
+
+1. `npm run manus-prompt -- "構想"` → 貼給 Manus → 產出的 JSON 存進 `inbox/`
+2. `npm run import-story`（還沒有圖可先 `npm run placeholders -- <slug>` 跑完整流程）
+3. 圖丟進 `src/content/stories/<slug>/images/`（檔名 `cover`/`01`/`02`…，png/jpg/webp 皆可）→ `npm run prepare-images -- <slug>`
+4. `index.md` 的 `status` 改 `published`，push（**一定要用手機或平板實測**，電腦上看不出真正的樣子）
 
 ### 圖片管線的形狀
 
@@ -145,6 +157,14 @@ dist/stories/<slug>/...
 內容驗證失敗時，Windows 上 `astro build` 會以 **127** 離開並印出
 `Assertion failed: ... src\win\async.c` —— 這是 Node/libuv 在 Windows 的崩潰式離開，
 不是乾淨的 `exit(1)`。**錯誤訊息仍然正確、離開碼仍然非 0，CI（Linux）不受影響。**
+
+寫任何會動到圖片檔的新腳本時，有兩個 Windows 檔案鎖的雷（`prepare-images.mjs` 已處理，照抄它的做法）：
+
+- **`sharp(路徑)` 會讓 libvips 把來源檔一直開著**，接下來對同一個檔 rename／覆寫會拿到
+  `EBUSY`（2026-08-19 踩到，整批圖處理到第一張就斷）。先 `readFile` 成 Buffer 再餵給 sharp。
+- **縮圖產生器／防毒／檔案總管預覽會短暫鎖住剛寫入的圖**，rename 要退讓重試、最後退到
+  複製再刪除（見 `prepare-images.mjs` 的 `moveOut()`）。錯誤不能吞：原始大檔留在
+  `images/` 就會進版控（規則 4）。
 
 容量監控（搬 R2 的觸發門檻是 180 篇或 `dist/` > 700 MB）：
 
