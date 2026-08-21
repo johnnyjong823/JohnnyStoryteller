@@ -18,7 +18,7 @@ series:
 related: ["hermes-winged-messenger"]
 
 # 圖片都放好之後，把這裡改成 published 就會上線
-status: "draft"
+status: "published"
 
 scenes:
   - image: "01.webp"
